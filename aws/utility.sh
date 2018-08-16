@@ -1289,6 +1289,8 @@ function release_enis() {
         if [[ -n "${attachment_id}" ]]; then
             info "Detaching ${attachment_id} ..."
             aws --region "${region}" ec2 detach-network-interface --attachment-id "${attachment_id}" || return $?
+            # -- detach may take some time, sleep for 5 seconds
+            sleep 5
         fi
     done
     for network_interface_id in $( jq -r '.NetworkInterfaces[].NetworkInterfaceId' < "${eni_list_file}" ) ; do
