@@ -45,6 +45,7 @@
     [#return
         getS3Statement(
             [
+                "s3:CopyObject*",
                 "s3:GetObject*",
                 "s3:PutObject*",
                 "s3:DeleteObject*",
