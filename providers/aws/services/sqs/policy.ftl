@@ -31,9 +31,9 @@
     [#return
         getSqsStatement(
             [
-                "sqs:SendMessage*",
-                "sqs:ReceiveMessage*",
-                "sqs:ChangeMessage*",
+                "sqs:SendMessage",
+                "sqs:ReceiveMessage",
+                "sqs:ChangeMessage",
                 "sqs:DeleteMessage*",
                 "sqs:Get*",
                 "sqs:List*"
@@ -46,7 +46,7 @@
     [#return
         getSqsStatement(
             [
-                "sqs:SendMessage*",
+                "sqs:SendMessage",
                 "sqs:Get*",
                 "sqs:List*"
             ],
@@ -58,8 +58,8 @@
     [#return
         getSqsStatement(
             [
-                "sqs:ReceiveMessage*",
-                "sqs:ChangeMessage*",
+                "sqs:ReceiveMessage",
+                "sqs:ChangeMessage",
                 "sqs:DeleteMessage*",
                 "sqs:Get*",
                 "sqs:List*"
@@ -75,7 +75,7 @@
             valueIfTrue(
                 "sqs:SendMessage",
                 resourcePolicy,
-                "sqs:SendMessage*"
+                "sqs:SendMessage"
             ),
             id,
             principals,
