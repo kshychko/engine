@@ -145,9 +145,27 @@ COMPONENT_BLUEPRINT="$(getJSONValue "${ENV_BLUEPRINT}" \
                                                 and .Core.Version.Name==\"${VERSION}\" \
                                             )")"
 
+ENGINE="$( echo "${COMPONENT_BLUEPRINT}" | jq -r '.Configuration.Solution.Engine' )"
 CLUSTER_ARN="$( echo "${COMPONENT_BLUEPRINT}" | jq -r '.State.Attributes.ECSHOST' )"
 DEFAULT_CONTAINER="$( echo "${COMPONENT_BLUEPRINT}" | jq -r '.Configuration.Solution.Containers | keys | .[0]' )"
 TASK_DEFINITION_ID="-$( echo "${COMPONENT_BLUEPRINT}" | jq -r '.State.ResourceGroups.default.Resources.task.Id' )-"
+
+if [[ "${ENGINE}" == "fargate" ]]; then
+    AWS_VPC_SECURITY_GROUP_ID="-$( echo "${COMPONENT_BLUEPRINT}" | jq -r '.State.ResourceGroups.default.Resources.securityGroup.Id' )-"
+    AWS_VPC_SECURITY_GROUP="$(aws --region "${REGION}" ec2 describe-security-groups --query "SecurityGroups[?contains(GroupName, '${AWS_VPC_SECURITY_GROUP_ID}') == \`true\`] | [0].GroupId" --output text )"
+    # Find the task definition
+    if [[ -z "${AWS_VPC_SECURITY_GROUP}" ]]; then
+        fatal "Unable to locate security group required for awsvpc network mode"
+        exit
+    fi
+    SUBNETS="$( echo "${COMPONENT_BLUEPRINT}" | jq -r '.State.Attributes.SUBNETS' )"
+    if [[ -z "${SUBNETS}" ]]; then
+        fatal "Unable to locate subnets required for awsvpc network mode"
+        exit
+    fi
+    # awsvpcConfiguration is required when network="awsvpc"
+    NETWORK_CONFIGURATION="awsvpcConfiguration={subnets=${SUBNETS},securityGroups=[${AWS_VPC_SECURITY_GROUP}]}"
+fi
 
 # Handle container name
 if [[ -n "${CONTAINER_ID}" ]]; then
@@ -161,7 +179,6 @@ if [[ "${SEGMENT}" == "default" ]]; then
 fi
 
 TASK_DEFINITION_ARN="$(aws --region "${REGION}" ecs list-task-definitions --query "taskDefinitionArns[?contains(@, '${TASK_DEFINITION_ID}') == \`true\`]|[?contains(@, '${PRODUCT}-${ENVIRONMENT}-${SEGMENT}') == \`true\`] | [0]" --output text )"
-
 info "Found the following task details \n * ClusterARN=${CLUSTER_ARN} \n * TaskDefinitionArn=${TASK_DEFINITION_ARN} \n * Container=${CONTAINER}"
 
 # Check the cluster
@@ -183,8 +200,18 @@ if [[ -z "${TASK_DEFINITION_ARN}" ]]; then
     exit
 fi
 
-# Find the container
-TASK_ARN="$(aws --region "${REGION}" ecs run-task --cluster "${CLUSTER_ARN}" --task-definition "${TASK_DEFINITION_ARN}" --count 1 --overrides "{\"containerOverrides\":[{\"name\":\"${CONTAINER}\",${ENV_STRUCTURE}}]}" --query 'tasks[0].taskArn' --output text || exit $? )"
+if [[ -z "${NETWORK_CONFIGURATION}" ]]; then
+  # Find the container
+  TASK_ARN="$(aws --region "${REGION}" ecs run-task --cluster "${CLUSTER_ARN}" \
+      --overrides "{\"containerOverrides\":[{\"name\":\"${CONTAINER}\",${ENV_STRUCTURE}}]}" \
+      --task-definition "${TASK_DEFINITION_ARN}" --count 1 --launch-type FARGATE --query 'tasks[0].taskArn' --output text || exit $? )"
+else
+  # Find the container
+  TASK_ARN="$(aws --region "${REGION}" ecs run-task --cluster "${CLUSTER_ARN}" \
+      --network-configuration "${NETWORK_CONFIGURATION}" \
+      --overrides "{\"containerOverrides\":[{\"name\":\"${CONTAINER}\",${ENV_STRUCTURE}}]}" \
+      --task-definition "${TASK_DEFINITION_ARN}" --count 1 --launch-type FARGATE --query 'tasks[0].taskArn' --output text || exit $? )"
+fi
 
 info "Watching task..."
 while true; do

@@ -322,6 +322,22 @@
         [/#list]
     [/#if]
 
+    [#local occurrenceNetwork = getOccurrenceNetwork(occurrence) ]
+    [#local networkLink = occurrenceNetwork.Link!{} ]
+    [#local networkLinkTarget = getLinkTarget(occurrence, networkLink ) ]
+    [#if ! networkLinkTarget?has_content ]
+        [@fatal message="Network could not be found" context=networkLink /]
+        [#return]
+    [/#if]
+
+    [#local networkConfiguration = networkLinkTarget.Configuration.Solution]
+    [#local networkResources = networkLinkTarget.State.Resources ]
+    [#local multiAZ = false ]
+    [#local subnets = multiAZ?then(
+                getSubnets(core.Tier, networkResources),
+                getSubnets(core.Tier, networkResources)[0..0]
+            )]
+
     [#assign componentState =
         {
             "Resources" : {
@@ -368,7 +384,8 @@
                     "Id" : formatResourceId( AWS_VPC_SECURITY_GROUP_RESOURCE_TYPE, core.Id ),
                     "Name" : core.FullName,
                     "Type" : AWS_VPC_SECURITY_GROUP_RESOURCE_TYPE
-                }) +
+                }
+            ) +
             attributeIfTrue(
                 "executionRole",
                 solution.Engine == "fargate",
@@ -379,7 +396,8 @@
                 }
             ),
             "Attributes" : {
-                "ECSHOST" : getExistingReference(ecsId)
+                "ECSHOST" : getExistingReference(ecsId),
+                "SUBNETS" : subnets
             } +
             attributeIfTrue(
                 "DEFINITION",
